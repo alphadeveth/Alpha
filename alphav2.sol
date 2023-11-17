@@ -887,7 +887,7 @@ contract AMETA is ERC20, Ownable {
                 buyTotalFees > 0
             ) {
                 if (!earlyBuyPenaltyInEffect()) {
-                    // reduce by 1 wei per max buy over what Uniswap will allow to revert bots as best as possible to limit erroneously blacklisted wallets. First bot will get in and be blacklisted, rest will be reverted (*cross fingers*)
+                    // reduce by 1 wei per max buy over what Uniswap will allow to revert bots as best as possible to limit erroneously blacklisted wallets. First bot will get in and be blacklisted, rest will be reverted.
                     maxBuyAmount -= 1;
                 }
 
