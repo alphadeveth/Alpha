@@ -638,7 +638,7 @@ contract AMETA is ERC20, Ownable {
         sellLiquidityFee = _liquidityFee;
         sellTreasuryFee = _treasuryFee;
         sellTotalFees = sellOperationsFee + sellLiquidityFee + sellTreasuryFee;
-        require(sellTotalFees <= 30, "Must keep fees at 30% or less");
+        require(sellTotalFees <= 20, "Must keep fees at 20% or less");
     }
 
     function excludeFromFees(address account, bool excluded) public onlyOwner {
