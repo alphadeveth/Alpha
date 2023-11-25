@@ -336,10 +336,6 @@ interface IDexFactory {
 }
 
 contract AMETA is ERC20, Ownable {
-    uint256 public maxBuyAmount;
-    uint256 public maxSellAmount;
-    uint256 public maxWallet;
-
     IDexRouter public dexRouter;
     address public lpPair;
 
@@ -355,7 +351,6 @@ contract AMETA is ERC20, Ownable {
     address[] public identifiedBots;
     uint256 public botsCaught;
 
-    bool public limitsInEffect = true;
     bool public tradingActive = false;
     bool public swapEnabled = false;
 
@@ -381,9 +376,8 @@ contract AMETA is ERC20, Ownable {
 
     /******************/
 
-    // exlcude from fees and max transaction amount
+    // exclude from fees
     mapping(address => bool) private _isExcludedFromFees;
-    mapping(address => bool) public _isExcludedMaxTransactionAmount;
 
     // store addresses that a automatic market maker pairs. Any transfer *to* these addresses
     // could be subject to a maximum transfer amount
@@ -395,17 +389,9 @@ contract AMETA is ERC20, Ownable {
 
     event ExcludeFromFees(address indexed account, bool isExcluded);
 
-    event UpdatedMaxBuyAmount(uint256 newAmount);
-
-    event UpdatedMaxSellAmount(uint256 newAmount);
-
-    event UpdatedMaxWalletAmount(uint256 newAmount);
-
     event UpdatedOperationsAddress(address indexed newWallet);
 
     event UpdatedTreasuryAddress(address indexed newWallet);
-
-    event MaxTransactionExclusion(address _address, bool excluded);
 
     event OwnerForcedSwapBack(uint256 timestamp);
 
@@ -436,14 +422,10 @@ contract AMETA is ERC20, Ownable {
             address(this),
             dexRouter.WETH()
         );
-        _excludeFromMaxTransaction(address(lpPair), true);
         _setAutomatedMarketMakerPair(address(lpPair), true);
 
         uint256 totalSupply = 5000 * 1e6 * 1e18; // 5 billion
 
-        maxBuyAmount = (totalSupply * 2) / 100; // 2%
-        maxSellAmount = (totalSupply * 1) / 100; // 1%
-        maxWallet = (totalSupply * 2) / 100; // 2%
         swapTokensAtAmount = (totalSupply * 5) / 10000; // 0.05 %
 
         buyOperationsFee = 2;
@@ -458,13 +440,6 @@ contract AMETA is ERC20, Ownable {
 
         operationsAddress = address(msg.sender);
         treasuryAddress = address(0x45b7c6FEA8961E0709A6c869F08286BcD1a77239);
-
-        _excludeFromMaxTransaction(newOwner, true);
-        _excludeFromMaxTransaction(address(this), true);
-        _excludeFromMaxTransaction(address(0xdead), true);
-        _excludeFromMaxTransaction(address(operationsAddress), true);
-        _excludeFromMaxTransaction(address(treasuryAddress), true);
-        _excludeFromMaxTransaction(address(dexRouter), true);
 
         excludeFromFees(newOwner, true);
         excludeFromFees(address(this), true);
@@ -523,47 +498,8 @@ contract AMETA is ERC20, Ownable {
         transferDelayEnabled = false;
     }
 
-    function updateMaxBuyAmount(uint256 newNum) external onlyOwner {
-        require(
-            newNum >= ((totalSupply() * 5) / 1000) / 1e18,
-            "Cannot set max buy amount lower than 0.5%"
-        );
-        require(
-            newNum <= ((totalSupply() * 2) / 100) / 1e18,
-            "Cannot set buy sell amount higher than 2%"
-        );
-        maxBuyAmount = newNum * (10**18);
-        emit UpdatedMaxBuyAmount(maxBuyAmount);
-    }
-
     function setTaxFree(bool set) external onlyOwner {
         taxFree = set; 
-    }
-
-    function updateMaxSellAmount(uint256 newNum) external onlyOwner {
-        require(
-            newNum >= ((totalSupply() * 5) / 1000) / 1e18,
-            "Cannot set max sell amount lower than 0.5%"
-        );
-        require(
-            newNum <= ((totalSupply() * 2) / 100) / 1e18,
-            "Cannot set max sell amount higher than 2%"
-        );
-        maxSellAmount = newNum * (10**18);
-        emit UpdatedMaxSellAmount(maxSellAmount);
-    }
-
-    function updateMaxWalletAmount(uint256 newNum) external onlyOwner {
-        require(
-            newNum >= ((totalSupply() * 5) / 1000) / 1e18,
-            "Cannot set max wallet amount lower than 0.5%"
-        );
-        require(
-            newNum <= ((totalSupply() * 5) / 100) / 1e18,
-            "Cannot set max wallet amount higher than 5%"
-        );
-        maxWallet = newNum * (10**18);
-        emit UpdatedMaxWalletAmount(maxWallet);
     }
 
     // change the minimum amount of tokens to sell from fees
@@ -577,26 +513,6 @@ contract AMETA is ERC20, Ownable {
             "Swap amount cannot be higher than 0.1% total supply."
         );
         swapTokensAtAmount = newAmount;
-    }
-
-    function _excludeFromMaxTransaction(address updAds, bool isExcluded)
-        private
-    {
-        _isExcludedMaxTransactionAmount[updAds] = isExcluded;
-        emit MaxTransactionExclusion(updAds, isExcluded);
-    }
-
-    function excludeFromMaxTransaction(address updAds, bool isEx)
-        external
-        onlyOwner
-    {
-        if (!isEx) {
-            require(
-                updAds != lpPair,
-                "Cannot remove uniswap pair from max txn"
-            );
-        }
-        _isExcludedMaxTransactionAmount[updAds] = isEx;
     }
 
     function setAutomatedMarketMakerPair(address pair, bool value)
@@ -613,7 +529,6 @@ contract AMETA is ERC20, Ownable {
 
     function _setAutomatedMarketMakerPair(address pair, bool value) private {
         automatedMarketMakerPairs[pair] = value;
-        _excludeFromMaxTransaction(pair, value);
         emit SetAutomatedMarketMakerPair(pair, value);
     }
 
@@ -667,60 +582,6 @@ contract AMETA is ERC20, Ownable {
                 !boughtEarly[from] || to == owner() || to == address(0xdead),
                 "Bots cannot transfer tokens in or out except to owner or dead address."
             );
-        }
-
-        if (limitsInEffect) {
-            if (
-                from != owner() &&
-                to != owner() &&
-                to != address(0xdead) &&
-                !_isExcludedFromFees[from] &&
-                !_isExcludedFromFees[to]
-            ) {
-                if (transferDelayEnabled) {
-                    if (to != address(dexRouter) && to != address(lpPair)) {
-                        require(
-                            _holderLastTransferTimestamp[tx.origin] <
-                                block.number - 2 &&
-                                _holderLastTransferTimestamp[to] <
-                                block.number - 2,
-                            "_transfer:: Transfer Delay enabled.  Try again later."
-                        );
-                        _holderLastTransferTimestamp[tx.origin] = block.number;
-                        _holderLastTransferTimestamp[to] = block.number;
-                    }
-                }
-
-                //when buy
-                if (
-                    automatedMarketMakerPairs[from] &&
-                    !_isExcludedMaxTransactionAmount[to]
-                ) {
-                    require(
-                        amount <= maxBuyAmount,
-                        "Buy transfer amount exceeds the max buy."
-                    );
-                    require(
-                        amount + balanceOf(to) <= maxWallet,
-                        "Max Wallet Exceeded"
-                    );
-                }
-                //when sell
-                else if (
-                    automatedMarketMakerPairs[to] &&
-                    !_isExcludedMaxTransactionAmount[from]
-                ) {
-                    require(
-                        amount <= maxSellAmount,
-                        "Sell transfer amount exceeds the max sell."
-                    );
-                } else if (!_isExcludedMaxTransactionAmount[to]) {
-                    require(
-                        amount + balanceOf(to) <= maxWallet,
-                        "Max Wallet Exceeded"
-                    );
-                }
-            }
         }
 
         uint256 contractTokenBalance = balanceOf(address(this));
@@ -937,11 +798,6 @@ contract AMETA is ERC20, Ownable {
         swapBack();
         swapping = false;
         emit OwnerForcedSwapBack(block.timestamp);
-    }
-
-    // remove limits after token is stable
-    function removeLimits() external onlyOwner {
-        limitsInEffect = false;
     }
 
     function disableMarkBotsForever() external onlyOwner {
